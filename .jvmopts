@@ -1,0 +1,6 @@
+-Xms4g
+-Xmx10g
+-Xss10m
+-XX:-UseCompressedOops
+-XX:MaxMetaspaceSize=512m
+-XX:MaxMetaspaceExpansion=0
