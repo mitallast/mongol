@@ -143,10 +143,10 @@ object client { module =>
   def startSession(options: ClientSessionOptions): ClientIO[ClientSession] =
     FF.liftF(StartSessionWithOptions(options))
 
-  def transaction[A](fa: SessionIO[A]): ClientIO[A] =
+  def session[A](fa: SessionIO[A]): ClientIO[A] =
     for {
       session <- startSession
-      a <- embed(session, CS.transaction(fa))
+      a <- embed(session, FS.deferClose(fa))
     } yield a
 
   val close: ClientIO[Unit] =

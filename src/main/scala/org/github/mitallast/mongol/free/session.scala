@@ -248,18 +248,6 @@ object session { module =>
   def watch(pipeline: Seq[_ <: Bson]): SessionIO[ChangeStreamIterable[Document]] =
     FF.liftF(WatchPipeline(pipeline))
 
-  def transaction[A](app: SessionIO[A]): SessionIO[A] =
-    bracketCase(startTransaction)(_ => app) {
-      case (_, ExitCase.Completed) => commitTransaction >> close
-      case _                       => abortTransaction >> close
-    }
-
-  def database[A](databaseName: String)(databaseIO: DatabaseIO[A]): SessionIO[A] =
-    for {
-      db <- getDatabase(databaseName)
-      a <- embed(db, databaseIO)
-    } yield a
-
   implicit val SessionOpEmbeddable: Embeddable[SessionOp, ClientSession] =
     new Embeddable[SessionOp, ClientSession] {
       def embed[A](j: ClientSession, fa: SessionIO[A]): Embedded[A] = Embedded.Session(j, fa)

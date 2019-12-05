@@ -4,7 +4,6 @@ import cats.effect.{Blocker, ContextShift, IO}
 import com.mongodb.client.MongoClients
 import org.github.mitallast.mongol._
 import org.github.mitallast.mongol.syntax.all.toClientIOOpsOps
-import org.github.mitallast.mongol.implicits._
 import org.github.mitallast.mongol.util.transactor.Transactor
 
 import scala.concurrent.ExecutionContext
@@ -18,14 +17,16 @@ object example extends App {
   private val xa = Transactor.fromClient[IO](MongoClients.create(), blocker)
 
   private val app: ClientIO[Unit] = for {
-    _ <- CL.transaction {
+    _ <- FC.session {
       for {
-        has <- CS.hasActiveTransaction
-        _ <- CS.delay(println(s"has active transaction: $has"))
-        _ <- CS.database("test") {
+        has <- FS.hasActiveTransaction
+        _ <- FS.delay(println(s"has active transaction: $has"))
+        _ <- HS.database("test") {
           for {
-            name <- DB.getName
-            _ <- DB.delay(println(s"db name: $name"))
+            name <- FDB.getName
+            _ <- FDB.delay(println(s"database: $name"))
+            collectionNames <- HDB.collectionNames.compile.to[Vector]
+            _ <- FDB.delay(println(s"collectionNames: $collectionNames"))
           } yield ()
         }
       } yield ()

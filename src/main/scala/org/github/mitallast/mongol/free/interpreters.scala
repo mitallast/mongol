@@ -25,6 +25,7 @@ import org.github.mitallast.mongol.free.client.ClientOp
 import org.github.mitallast.mongol.free.collection.CollectionOp
 import org.github.mitallast.mongol.free.database.DatabaseOp
 import org.github.mitallast.mongol.free.session.SessionOp
+import org.github.mitallast.mongol.free.cursor.CursorOp
 
 import scala.concurrent.ExecutionContext
 import scala.jdk.CollectionConverters._
@@ -50,11 +51,13 @@ trait interpreters[M[_]] { outer =>
   type SessionState[A] = Kleisli[M, (MongoClient, ClientSession), A]
   type DatabaseState[A] = StateT[M, (ClientSession, MongoDatabase), A]
   type CollectionState[A] = StateT[M, (ClientSession, MongoCollection[Document]), A]
+  type CursorState[A] = Kleisli[M, MongoCursor[_], A]
 
   lazy val ClientInterpreter: ClientOp ~> ClientState = new ClientInterpreter {}
   lazy val SessionInterpreter: SessionOp ~> SessionState = new SessionInterpreter {}
   lazy val DatabaseInterpreter: DatabaseOp ~> DatabaseState = new DatabaseInterpreter {}
   lazy val CollectionInterpreter: CollectionOp ~> CollectionState = new CollectionInterpreter {}
+  lazy val CursorInterpreter: CursorOp ~> CursorState = new CursorInterpreter {}
 
   private def block[A](f: => A): M[A] =
     blocker.blockOn[M, A] {
@@ -119,6 +122,7 @@ trait interpreters[M[_]] { outer =>
       Kleisli.apply { c =>
         e match {
           case Embedded.Session(j, fa) => fa.foldMap(SessionInterpreter).run((c, j))
+          case Embedded.Cursor(j, fa)  => fa.foldMap(CursorInterpreter).run(j)
           case _                       => asyncM.raiseError(new IllegalArgumentException())
         }
       }
@@ -159,6 +163,7 @@ trait interpreters[M[_]] { outer =>
             case Embedded.Session(j, fa)    => fa.foldMap(this).run((c, j))
             case Embedded.Database(j, fa)   => fa.foldMap(DatabaseInterpreter).runA((s, j))
             case Embedded.Collection(j, fa) => fa.foldMap(CollectionInterpreter).runA((s, j))
+            case Embedded.Cursor(j, fa)     => fa.foldMap(CursorInterpreter).run(j)
             case _                          => asyncM.raiseError(new IllegalArgumentException)
           }
       }
@@ -296,6 +301,7 @@ trait interpreters[M[_]] { outer =>
           e match {
             case Embedded.Database(j, fa)   => fa.foldMap(this).runA((s, j))
             case Embedded.Collection(j, fa) => fa.foldMap(CollectionInterpreter).runA((s, j))
+            case Embedded.Cursor(j, fa)     => fa.foldMap(CursorInterpreter).run(j)
             case _                          => asyncM.raiseError(new IllegalArgumentException)
           }
       }
@@ -376,6 +382,7 @@ trait interpreters[M[_]] { outer =>
           e match {
             case Embedded.Database(j, fa)   => fa.foldMap(DatabaseInterpreter).runA((s, j))
             case Embedded.Collection(j, fa) => fa.foldMap(this).runA((s, j))
+            case Embedded.Cursor(j, fa)     => fa.foldMap(CursorInterpreter).run(j)
             case _                          => asyncM.raiseError(new IllegalArgumentException)
           }
       }
@@ -562,5 +569,30 @@ trait interpreters[M[_]] { outer =>
 
     override def renameCollection(namespace: MongoNamespace, options: RenameCollectionOptions): CollectionState[Unit] =
       primitive { case (s, c) => c.renameCollection(s, namespace, options) }
+  }
+
+  trait CursorInterpreter extends CursorOp.Visitor[CursorState] with KleisliInterpreter[CursorOp, MongoCursor[_]] {
+    override def embed[A](e: Embedded[A]): CursorState[A] =
+      Kleisli.apply { c =>
+        e match {
+          case Embedded.Cursor(j, fa) => fa.foldMap(this).run(j)
+          case _                      => asyncM.raiseError(new IllegalArgumentException)
+        }
+      }
+
+    override def raw[A, B](f: MongoCursor[A] => B): CursorState[B] =
+      primitive(c => f(c.asInstanceOf[MongoCursor[A]]))
+
+    override def hasNext: CursorState[Boolean] =
+      primitive(_.hasNext)
+
+    override def next[A]: CursorState[A] =
+      primitive(c => c.asInstanceOf[MongoCursor[A]].next())
+
+    override def tryNext[A]: CursorState[Option[A]] =
+      primitive(c => Option(c.asInstanceOf[MongoCursor[A]].tryNext()))
+
+    override def close(): CursorState[Unit] =
+      primitive(_.close())
   }
 }
