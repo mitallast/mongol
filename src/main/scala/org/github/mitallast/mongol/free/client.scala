@@ -146,7 +146,7 @@ object client { module =>
   def session[A](fa: SessionIO[A]): ClientIO[A] =
     for {
       session <- startSession
-      a <- embed(session, FS.deferClose(fa))
+      a <- embed(session, HS.deferClose(fa))
     } yield a
 
   val close: ClientIO[Unit] =
