@@ -143,12 +143,6 @@ object client { module =>
   def startSession(options: ClientSessionOptions): ClientIO[ClientSession] =
     FF.liftF(StartSessionWithOptions(options))
 
-  def session[A](fa: SessionIO[A]): ClientIO[A] =
-    for {
-      session <- startSession
-      a <- embed(session, HS.deferClose(fa))
-    } yield a
-
   val close: ClientIO[Unit] =
     FF.liftF(Close)
   val listDatabaseNames: ClientIO[MongoIterable[String]] =

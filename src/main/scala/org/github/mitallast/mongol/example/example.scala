@@ -1,6 +1,7 @@
 package org.github.mitallast.mongol.example
 
 import cats.effect.{Blocker, ContextShift, IO}
+import fs2.Stream
 import com.mongodb.client.MongoClients
 import org.github.mitallast.mongol._
 import org.github.mitallast.mongol.syntax.all.toClientIOOpsOps
@@ -17,7 +18,7 @@ object example extends App {
   private val xa = Transactor.fromClient[IO](MongoClients.create(), blocker)
 
   private val app: ClientIO[Unit] = for {
-    _ <- FC.session {
+    _ <- HC.session {
       for {
         has <- FS.hasActiveTransaction
         _ <- FS.delay(println(s"has active transaction: $has"))
@@ -34,4 +35,22 @@ object example extends App {
   } yield ()
 
   app.transact(xa).unsafeRunSync()
+
+  private val app2: Stream[ClientIO, String] =
+    for {
+      a <- HC.session {
+        for {
+          has <- Stream.eval(FS.hasActiveTransaction)
+          _ <- Stream.eval(FS.delay(println(s"has active transaction: $has")))
+          a <- HS.databaseP("test") {
+            for {
+              a <- HDB.collectionNames
+              _ <- Stream.eval(FDB.delay(println(s"collectionName: $a")))
+            } yield a
+          }
+        } yield a
+      }
+    } yield a
+
+  xa.transP.apply(app2).compile.to[Vector].unsafeRunSync()
 }
